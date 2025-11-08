@@ -96,6 +96,7 @@ func (app *application) registerUser(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create user"})
 		log.Println(user)
+		log.Println(err.Error())
 		return
 	}
 	c.JSON(http.StatusCreated, user)

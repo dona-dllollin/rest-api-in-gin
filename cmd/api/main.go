@@ -9,7 +9,7 @@ import (
 	"rest-api-in-gin/internal/env"
 
 	_ "github.com/joho/godotenv/autoload"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -29,11 +29,17 @@ type application struct {
 }
 
 func main() {
-	db, err := sql.Open("sqlite3", "./data.db")
+	db, err := sql.Open("postgres", "postgres://postgres:postgres@localhost:5431/eventdb?sslmode=disable")
 
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Test koneksi
+	if err := db.Ping(); err != nil {
+		log.Fatal("failed to connect to DB:", err)
+	}
+	log.Println("Database connection Succesfuly")
 
 	defer db.Close()
 

@@ -20,19 +20,18 @@ type User struct {
 func (m *UserModel) Insert(user *User) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	query := "INSERT INTO users (email, name, password) VALUES ($1, $2, $3)"
+	query := `
+		INSERT INTO users (email, name, password)
+		VALUES ($1, $2, $3)
+		RETURNING id
+	`
 
-	result, err := m.DB.ExecContext(ctx, query, user.Email, user.Name, user.Password)
+	// Gunakan QueryRow untuk membaca id yang dikembalikan PostgreSQL
+	err := m.DB.QueryRowContext(ctx, query, user.Email, user.Name, user.Password).Scan(&user.Id)
 	if err != nil {
 		return err
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-
-	user.Id = int(id)
 	return nil
 }
 

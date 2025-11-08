@@ -1,14 +1,20 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"rest-api-in-gin/internal/database"
 	"rest-api-in-gin/internal/helper"
+	"strconv"
 	"time"
+
+	"rest-api-in-gin/internal/env"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
+	_ "github.com/joho/godotenv/autoload"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -36,6 +42,7 @@ func (app *application) login(c *gin.Context) {
 	existingUser, err := app.models.Users.GetByEmail(auth.Email)
 	if existingUser == nil {
 		helper.JSONError(c, http.StatusUnauthorized, "Invalid email or password")
+		fmt.Println(err.Error())
 		return
 	}
 	if err != nil {
@@ -45,18 +52,22 @@ func (app *application) login(c *gin.Context) {
 	err = bcrypt.CompareHashAndPassword([]byte(existingUser.Password), []byte(auth.Password))
 	if err != nil {
 		helper.JSONError(c, http.StatusUnauthorized, "Invalid email or password")
+		fmt.Println(*existingUser)
 		return
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"userId": existingUser.Id,
-		"expr":   time.Now().Add(time.Hour * 72).Unix(),
-	})
 
-	tokenString, err := token.SignedString([]byte(app.jwtSecret))
+	tokenString, err := helper.GenerateAccessToken(existingUser.Id)
+	refreshToken, _ := helper.GenerateRefreshToken(existingUser.Id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
-		return
+		helper.JSONError(c, http.StatusInternalServerError, "gagal membuat token")
 	}
+
+	// simpan refresh token kdi redis
+	app.redis.Set(context.Background(), "refresh:"+strconv.Itoa(existingUser.Id), refreshToken, 7*24*time.Hour)
+
+	//kirim refresh token via httpOnly Cookie
+	c.SetCookie("refresh_token", refreshToken, 7*24*3600, "/", "", true, true)
+
 	c.JSON(http.StatusOK, loginResponse{Token: tokenString})
 
 }
@@ -88,4 +99,42 @@ func (app *application) registerUser(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, user)
+}
+
+// handler untuk refresh access token
+
+func (app *application) Refresh(c *gin.Context) {
+	cookie, err := c.Cookie("refresh_token")
+	if err != nil || cookie == "" {
+		helper.JSONError(c, http.StatusUnauthorized, "No refresh token")
+		return
+	}
+	// parse refresh token
+	token, err := jwt.Parse(cookie, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(env.GetEnvString("REFRESH_SECRET", "some-iam-fresh-2718271")), nil
+	})
+	if err != nil || !token.Valid {
+		helper.JSONError(c, http.StatusUnauthorized, "Invalid Refresh token")
+		return
+	}
+
+	claims := token.Claims.(jwt.MapClaims)
+	userID := claims["userId"].(float64)
+
+	// Ambil token dari redis untuk validasi
+	stored, err := app.redis.Get(context.Background(), "refresh:"+strconv.Itoa(int(userID))).Result()
+	if err != nil || stored != cookie {
+		helper.JSONError(c, http.StatusUnauthorized, "Invalid Refresh token")
+		return
+	}
+
+	// Buat Access Token Baru
+	user_id := int(userID)
+	newAccessToken, _ := helper.GenerateAccessToken(user_id)
+
+	c.JSON(http.StatusOK, loginResponse{Token: newAccessToken})
+
 }

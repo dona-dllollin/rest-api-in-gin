@@ -57,6 +57,6 @@ func (m *UserModel) Get(id int) (*User, error) {
 }
 
 func (m *UserModel) GetByEmail(email string) (*User, error) {
-	query := "SELECT * FROM users WHERE id = $1"
+	query := "SELECT * FROM users WHERE email = $1"
 	return m.getUser(query, email)
 }

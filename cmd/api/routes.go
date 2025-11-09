@@ -12,6 +12,7 @@ func (app *application) routes() http.Handler {
 	g := gin.Default()
 
 	v1 := g.Group("/api/v1")
+	v1.Use(app.PromDurationMiddleware())
 	{
 
 		v1.GET("/events", app.getAllEvents)

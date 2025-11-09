@@ -3,12 +3,15 @@ package main
 import (
 	"net/http"
 	"rest-api-in-gin/internal/helper"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
 )
 
+// middleware autentikasi
 func (app *application) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -51,5 +54,22 @@ func (app *application) AuthMiddleware() gin.HandlerFunc {
 		}
 
 		c.Set("user", user)
+	}
+}
+
+// middleware prometheus
+func (app *application) PromDurationMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		respStatus := c.Writer.Status()
+		duration := time.Since(start)
+		RequestDuration.With(map[string]string{
+			"response_status": strconv.Itoa(respStatus),
+		}).Observe(duration.Seconds())
+		RequestTotal.With(map[string]string{
+			"response_status": strconv.Itoa(respStatus),
+		}).Inc()
+
 	}
 }

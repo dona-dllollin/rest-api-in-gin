@@ -1,8 +1,16 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"log"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	_ "rest-api-in-gin/docs"
 	"rest-api-in-gin/internal/database"
@@ -10,6 +18,7 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -29,6 +38,13 @@ type application struct {
 }
 
 func main() {
+
+	//prometheus handler
+	http.Handle("/metrics", promhttp.Handler())
+	promServer := &http.Server{
+		Addr: ":8081",
+	}
+
 	db, err := sql.Open("postgres", "postgres://postgres:postgres@localhost:5431/eventdb?sslmode=disable")
 
 	if err != nil {
@@ -50,9 +66,47 @@ func main() {
 		models:    models,
 		redis:     redis.NewClient(&redis.Options{Addr: "localhost:6379"}),
 	}
+	srv := app.serve()
 
-	if err := app.serve(); err != nil {
-		log.Fatal(err)
+	ctx, cancel := context.WithCancel(context.Background())
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	signal.Notify(sig, syscall.SIGTERM)
+
+	go func() {
+		<-sig
+		slog.Info("Shutting down application")
+		cancel()
+	}()
+
+	// start prometheus exporter
+	go func() {
+		slog.Info("Listening and serving prometheus exporter", slog.Int("port", 8081))
+		if err := promServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("failed listening prometheus exporter", slog.Any("err", err))
+			panic(err)
+		}
+	}()
+
+	// start echo server
+	go func() {
+		slog.Info("Listening and serving HTTP", slog.Int("port", 8080))
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("failed starting HTTP server", slog.Any("err", err))
+			panic(err)
+		}
+	}()
+
+	<-ctx.Done()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("HTTP server shutdown failed", slog.Any("err", err))
+		panic(err)
+	}
+	if err := promServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("Prometheus shutdown failed", slog.Any("err", err))
+		panic(err)
 	}
 
 }

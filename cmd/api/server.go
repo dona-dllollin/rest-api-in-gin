@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func (app *application) serve() error {
+func (app *application) serve() *http.Server {
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", app.port),
 		Handler:      app.routes(),
@@ -17,6 +17,6 @@ func (app *application) serve() error {
 	}
 	log.Printf("Starting server on port %d", app.port)
 
-	return server.ListenAndServe()
+	return server
 
 }

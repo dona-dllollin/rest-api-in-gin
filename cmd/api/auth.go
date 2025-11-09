@@ -73,6 +73,7 @@ func (app *application) login(c *gin.Context) {
 }
 
 func (app *application) registerUser(c *gin.Context) {
+	UserRegistered.Inc()
 	var register registerRequest
 
 	if err := c.ShouldBindJSON(&register); err != nil {

@@ -37,6 +37,7 @@ func (app *application) createEvent(c *gin.Context) {
 // @Success 200 {object} []database.Event
 // @Router /api/v1/events [get]
 func (app *application) getAllEvents(c *gin.Context) {
+
 	events, err := app.models.Events.GetAll()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retreive events"})
@@ -250,9 +251,10 @@ func (app *application) getEventsByAttende(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event Id"})
 		return
 	}
+	GetEventByUser.With(map[string]string{"user_id": c.Param("id")})
 	events, err := app.models.Attendes.GetEventsByattende(id)
 	if err != nil {
-		helper.JSONError(c, http.StatusInternalServerError, "Failed to retreive data")
+		helper.JSONError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, events)
